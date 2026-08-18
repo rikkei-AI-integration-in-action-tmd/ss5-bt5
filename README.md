@@ -1,30 +1,26 @@
-# BÀI 5: SÁNG TẠO NÂNG CAO — THIẾT KẾ TRỢ LÝ ẢO TRA CỨU CRM & ÁP DỤNG VOUCHER TỰ ĐỘNG
+BÀI 5: SÁNG TẠO NÂNG CAO - THIẾT KẾ TRỢ LÝ ẢO TRA CỨU CRM & ÁP DỤNG VOUCHER TỰ ĐỘNG
 
----
+1. MÔ TẢ BỐI CẢNH & PHÂN TÍCH GIẢI PHÁP CHỊU LỖI (FAULT TOLERANCE)
 
-## 1. MÔ TẢ BỐI CẢNH & PHÂN TÍCH GIẢI PHÁP CHỊU LỖI (FAULT TOLERANCE)
+1.1. Bối cảnh nghiệp vụ CRM Support Agent
+Hệ thống khách sạn R-Hotels triển khai trợ lý ảo thông minh có khả năng tự động tra cứu ưu đãi cá nhân hóa của từng khách hàng từ hệ thống CRM và thực thi áp dụng voucher tốt nhất vào hóa đơn đặt phòng theo yêu cầu tự nhiên của khách hàng (ví dụ: "Áp dụng giúp tôi mã giảm giá tốt nhất của tôi vào đơn đặt phòng mã HD999 nhé").
 
-### 1.1. Bối cảnh nghiệp vụ CRM Support Agent
-Hệ thống khách sạn R-Hotels triển khai trợ lý ảo thông minh có khả năng tự động tra cứu ưu đãi cá nhân hóa của từng khách hàng từ hệ thống CRM và thực thi áp dụng voucher tốt nhất vào hóa đơn đặt phòng theo yêu cầu tự nhiên của khách hàng (ví dụ: *"Áp dụng giúp tôi mã giảm giá tốt nhất của tôi vào đơn đặt phòng mã HD999 nhé"*).
+1.2. Các nguy cơ lỗi nghiệp vụ và giải pháp lập trình phòng thủ
+- Khách hàng chưa cung cấp thông tin danh tính (Customer ID / Phone):
+  + Nguy cơ: AI phỏng đoán mã khách hàng hoặc gọi Tool với tham số rỗng.
+  + Giải pháp: Prompt huấn luyện AI kiểm tra ChatMemory; nếu chưa có danh tính thì dừng lại và chủ động hỏi khách hàng trước khi gọi Tool. Đồng thời Tool 1 kiểm tra request.customerId(), nếu rỗng sẽ trả về CustomerVouchersResponse.error(...).
+- Hóa đơn đã được thanh toán từ trước (Invoice Already Paid):
+  + Nguy cơ: Áp dụng đè voucher làm sai lệch doanh thu kế toán hoặc ném Exception sập API.
+  + Giải pháp: Tool 2 kiểm tra trạng thái hóa đơn; nếu đã thanh toán thì trả về ApplyVoucherResponse.error(..., "Hóa đơn HD888 đã được thanh toán trước đó, không thể áp dụng thêm mã giảm giá.").
+- Mã voucher không hợp lệ hoặc đã hết hạn (Invalid / Expired Voucher):
+  + Nguy cơ: Tính toán sai tổng tiền hoặc làm hỏng dữ liệu đơn đặt phòng.
+  + Giải pháp: Tool 2 xác thực danh mục mã hợp lệ và trả về isSuccess = false kèm thông điệp chi tiết.
+- Nguyên tắc không ném Unhandled Exception:
+  + Cả 2 Tool @Tool đều không ném Runtime Exception mà đóng gói kết quả trong Java Record Response để Spring AI duy trì chu trình hội thoại và để AI giải thích tự nhiên cho người dùng.
 
-### 1.2. Các nguy cơ lỗi nghiệp vụ và giải pháp lập trình phòng thủ
-1. **Khách hàng chưa cung cấp thông tin danh tính (Customer ID / Phone):**
-   - *Nguy cơ:* AI phỏng đoán mã khách hàng hoặc gọi Tool với tham số rỗng.
-   - *Giải pháp:* Prompt huấn luyện AI kiểm tra ChatMemory; nếu chưa có danh tính thì dừng lại và chủ động hỏi khách hàng trước khi gọi Tool. Đồng thời Tool 1 kiểm tra `request.customerId()`, nếu rỗng sẽ trả về `CustomerVouchersResponse.error(...)`.
-2. **Hóa đơn đã được thanh toán từ trước (Invoice Already Paid):**
-   - *Nguy cơ:* Áp dụng đè voucher làm sai lệch doanh thu kế toán hoặc ném Exception sập API.
-   - *Giải pháp:* Tool 2 kiểm tra trạng thái hóa đơn; nếu đã thanh toán thì trả về `ApplyVoucherResponse.error(..., "Hóa đơn HD888 đã được thanh toán trước đó, không thể áp dụng thêm mã giảm giá.")`.
-3. **Mã voucher không hợp lệ hoặc đã hết hạn (Invalid / Expired Voucher):**
-   - *Nguy cơ:* Tính toán sai tổng tiền hoặc làm hỏng dữ liệu đơn đặt phòng.
-   - *Giải pháp:* Tool 2 xác thực danh mục mã hợp lệ và trả về `isSuccess = false` kèm thông điệp chi tiết.
-4. **Nguyên tắc không ném Unhandled Exception:**
-   - Cả 2 Tool `@Tool` đều không ném Runtime Exception mà đóng gói kết quả trong Java Record Response để Spring AI duy trì chu trình hội thoại và để AI giải thích tự nhiên cho người dùng.
 
----
+2. SƠ ĐỒ LUỒNG XỬ LÝ DỮ LIỆU (ASCII FLOW DIAGRAM)
 
-## 2. SƠ ĐỒ LUỒNG XỬ LÝ DỮ LIỆU (ASCII FLOW DIAGRAM)
-
-```text
 +---------------------------------------------------------------------------------------------------+
 |                                 NGƯỜI DÙNG (USER / CLIENT)                                         |
 +---------------------------------------------------------------------------------------------------+
@@ -66,14 +62,12 @@ Hệ thống khách sạn R-Hotels triển khai trợ lý ảo thông minh có k
 |                        BƯỚC 4: AI TỔNG HỢP & PHẢN HỒI KHÁCH HÀNG                                  |
 |  - "Em đã áp dụng thành công mã VIP20 (giảm 20%) cho đơn HD999. Tổng thanh toán là 2.000.000 VNĐ"|
 +---------------------------------------------------------------------------------------------------+
-```
 
----
 
-## 3. MÃ NGUỒN JAVA TRIỂN KHAI HOÀN CHỈNH
+3. MÃ NGUỒN JAVA TRIỂN KHAI HOÀN CHỈNH
 
-### 3.1. DTOs cho Tool 1 (Tra cứu CRM)
-- `CustomerIdRequest.java`:
+3.1. DTOs cho Tool 1 (Tra cứu CRM)
+- CustomerIdRequest.java:
 ```java
 package com.rikkei.crm.dto;
 
@@ -88,7 +82,7 @@ public record CustomerIdRequest(
 }
 ```
 
-- `VoucherDto.java`:
+- VoucherDto.java:
 ```java
 package com.rikkei.crm.dto;
 
@@ -102,7 +96,7 @@ public record VoucherDto(
 }
 ```
 
-- `CustomerVouchersResponse.java`:
+- CustomerVouchersResponse.java:
 ```java
 package com.rikkei.crm.dto;
 
@@ -124,8 +118,8 @@ public record CustomerVouchersResponse(
 }
 ```
 
-### 3.2. DTOs cho Tool 2 (Áp dụng Voucher)
-- `ApplyVoucherRequest.java`:
+3.2. DTOs cho Tool 2 (Áp dụng Voucher)
+- ApplyVoucherRequest.java:
 ```java
 package com.rikkei.crm.dto;
 
@@ -144,7 +138,7 @@ public record ApplyVoucherRequest(
 }
 ```
 
-- `ApplyVoucherResponse.java`:
+- ApplyVoucherResponse.java:
 ```java
 package com.rikkei.crm.dto;
 
@@ -167,8 +161,8 @@ public record ApplyVoucherResponse(
 }
 ```
 
-### 3.3. DTOs cho REST Controller
-- `ChatRequest.java`:
+3.3. DTOs cho REST Controller
+- ChatRequest.java:
 ```java
 package com.rikkei.crm.dto;
 
@@ -179,7 +173,7 @@ public record ChatRequest(
 }
 ```
 
-- `ChatResponse.java`:
+- ChatResponse.java:
 ```java
 package com.rikkei.crm.dto;
 
@@ -196,7 +190,7 @@ public record ChatResponse(
 }
 ```
 
-### 3.4. Service Tools `CrmBookingToolsService.java`
+3.4. Service Tools CrmBookingToolsService.java
 ```java
 package com.rikkei.crm.service;
 
@@ -285,7 +279,7 @@ public class CrmBookingToolsService {
 }
 ```
 
-### 3.5. Cấu hình `CrmAgentConfig.java`
+3.5. Cấu hình CrmAgentConfig.java
 ```java
 package com.rikkei.crm.config;
 
@@ -337,7 +331,7 @@ public class CrmAgentConfig {
 }
 ```
 
-### 3.6. REST Controller `CrmSupportController.java`
+3.6. REST Controller CrmSupportController.java
 ```java
 package com.rikkei.crm.controller;
 
@@ -383,25 +377,24 @@ public class CrmSupportController {
 }
 ```
 
----
 
-## 4. PHÂN TÍCH KỸ THUẬT CHUYÊN SÂU VỀ LUỒNG GỌI TOOL LIÊN TIẾP (TOOL CHAINING)
+4. PHÂN TÍCH KỸ THUẬT CHUYÊN SÂU VỀ LUỒNG GỌI TOOL LIÊN TIẾP (TOOL CHAINING)
 
-### 4.1. Vòng lặp suy luận ReAct (Reasoning + Acting) trong Spring AI
+4.1. Vòng lặp suy luận ReAct (Reasoning + Acting) trong Spring AI
 Spring AI thực hiện cơ chế Tool Calling thông qua một vòng lặp đa lượt (Multi-turn Execution Loop):
-1. **Lượt 1 (Request $\rightarrow$ Tool 1):**
-   - Người dùng gửi: *"Áp dụng voucher tốt nhất cho đơn HD999, tôi là KH888"*.
-   - LLM nhận diện cần lấy danh sách voucher $\rightarrow$ Phản hồi cờ `tool_calls` yêu cầu thực thi `getCustomerVouchers(customerId="KH888")`.
-   - Spring AI bắt sự kiện này, tìm bean `CrmBookingToolsService`, gọi phương thức tương ứng và thu về kết quả `CustomerVouchersResponse` dạng JSON.
-2. **Lượt 2 (Context Injection & Tool 2 Trigger):**
-   - Spring AI tự động đóng gói kết quả JSON của Tool 1 thành một message loại `TOOL` và gửi ngược lại cho LLM cùng toàn bộ lịch sử trò chuyện.
-   - LLM đọc kết quả: Thấy có `VIP20 (20%)` và `WELCOME10 (10%)`.
-   - Khả năng suy luận ngữ nghĩa của LLM so sánh $20\% > 10\%$ và kết luận `VIP20` là voucher tối ưu nhất.
-   - LLM tiếp tục phát sinh cờ `tool_calls` thứ hai: `applyVoucherToInvoice(invoiceId="HD999", voucherCode="VIP20")`.
-3. **Lượt 3 (Tổng hợp câu trả lời cuối cùng):**
-   - Spring AI thực thi Tool 2, cập nhật hóa đơn và trả về kết quả `ApplyVoucherResponse` cho LLM.
-   - LLM nhận thấy không cần gọi thêm Tool nào nữa, tiến hành tổng hợp toàn bộ dữ liệu thành câu văn hoàn chỉnh, thân thiện trả về cho Controller.
+- Lượt 1 (Request -> Tool 1):
+  + Người dùng gửi: "Áp dụng voucher tốt nhất cho đơn HD999, tôi là KH888".
+  + LLM nhận diện cần lấy danh sách voucher -> Phản hồi cờ tool_calls yêu cầu thực thi getCustomerVouchers(customerId="KH888").
+  + Spring AI bắt sự kiện này, tìm bean CrmBookingToolsService, gọi phương thức tương ứng và thu về kết quả CustomerVouchersResponse dạng JSON.
+- Lượt 2 (Context Injection & Tool 2 Trigger):
+  + Spring AI tự động đóng gói kết quả JSON của Tool 1 thành một message loại TOOL và gửi ngược lại cho LLM cùng toàn bộ lịch sử trò chuyện.
+  + LLM đọc kết quả: Thấy có VIP20 (20%) và WELCOME10 (10%).
+  + Khả năng suy luận ngữ nghĩa của LLM so sánh 20% > 10% và kết luận VIP20 là voucher tối ưu nhất.
+  + LLM tiếp tục phát sinh cờ tool_calls thứ hai: applyVoucherToInvoice(invoiceId="HD999", voucherCode="VIP20").
+- Lượt 3 (Tổng hợp câu trả lời cuối cùng):
+  + Spring AI thực thi Tool 2, cập nhật hóa đơn và trả về kết quả ApplyVoucherResponse cho LLM.
+  + LLM nhận thấy không cần gọi thêm Tool nào nữa, tiến hành tổng hợp toàn bộ dữ liệu thành câu văn hoàn chỉnh, thân thiện trả về cho Controller.
 
-### 4.2. Tại sao cơ chế này hoạt động an toàn và hoàn toàn tự động?
-- **Trích xuất động theo chuỗi (Contextual Data Propagation):** Giá trị `voucherCode="VIP20"` dùng cho Tool 2 không phải do người dùng nhập trực tiếp, mà do LLM tự động trích xuất từ payload kết quả của Tool 1 trong cùng một phiên hội thoại.
-- **Không ngắt quãng luồng hội thoại:** Nhờ áp dụng lập trình phòng thủ, các tình huống biên (hóa đơn đã thanh toán, voucher hết hạn) đều được trả về dưới dạng JSON Response với `isSuccess = false`, giúp LLM giải thích lỗi nhẹ nhàng thay vì làm crash hệ thống với HTTP 500.
+4.2. Tại sao cơ chế này hoạt động an toàn và hoàn toàn tự động?
+- Trích xuất động theo chuỗi (Contextual Data Propagation): Giá trị voucherCode="VIP20" dùng cho Tool 2 không phải do người dùng nhập trực tiếp, mà do LLM tự động trích xuất từ payload kết quả của Tool 1 trong cùng một phiên hội thoại.
+- Không ngắt quãng luồng hội thoại: Nhờ áp dụng lập trình phòng thủ, các tình huống biên (hóa đơn đã thanh toán, voucher hết hạn) đều được trả về dưới dạng JSON Response với isSuccess = false, giúp LLM giải thích lỗi nhẹ nhàng thay vì làm crash hệ thống với HTTP 500.
